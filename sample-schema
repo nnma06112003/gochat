@@ -1,0 +1,91 @@
+-- Kích hoạt extension nếu bạn muốn dùng UUID làm khóa chính cho bảng sessions
+-- CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ========= 1. BẢNG USERS =========
+-- Lưu trữ thông tin người dùng
+CREATE TABLE users (
+    user_id BIGSERIAL PRIMARY KEY,
+    phone_number VARCHAR(20) NOT NULL UNIQUE,
+    username VARCHAR(32) UNIQUE,
+    first_name VARCHAR(255) NOT NULL,
+    last_name VARCHAR(255),
+    bio TEXT,
+    profile_picture_url VARCHAR(2048),
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ========= 2. BẢNG CHATS VÀ CHAT_MEMBERS =========
+-- Định nghĩa các kiểu dữ liệu ENUM để sử dụng lại
+CREATE TYPE chat_type_enum AS ENUM ('private', 'group', 'channel');
+CREATE TYPE chat_member_role_enum AS ENUM ('member', 'admin');
+
+-- Bảng lưu thông tin chung về các cuộc hội thoại
+CREATE TABLE chats (
+    chat_id BIGSERIAL PRIMARY KEY,
+    chat_type chat_type_enum NOT NULL,
+    name VARCHAR(255),
+    description TEXT,
+    profile_picture_url VARCHAR(2048),
+    creator_id BIGINT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (creator_id) REFERENCES users(user_id) ON DELETE SET NULL
+);
+
+-- Bảng nối, liên kết người dùng với các cuộc hội thoại
+CREATE TABLE chat_members (
+    chat_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    role chat_member_role_enum NOT NULL DEFAULT 'member',
+    joined_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (chat_id, user_id),
+    FOREIGN KEY (chat_id) REFERENCES chats(chat_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- ========= 3. BẢNG MESSAGES =========
+-- Lưu trữ nội dung tất cả tin nhắn
+CREATE TABLE messages (
+    message_id BIGSERIAL PRIMARY KEY,
+    chat_id BIGINT NOT NULL,
+    sender_id BIGINT NOT NULL,
+    content TEXT,
+    media_url VARCHAR(2048),
+    media_type VARCHAR(50),
+    sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ,
+
+    FOREIGN KEY (chat_id) REFERENCES chats(chat_id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- Index rất quan trọng cho việc truy vấn tin nhắn nhanh chóng
+CREATE INDEX idx_messages_chat_id_sent_at ON messages(chat_id, sent_at DESC);
+
+
+-- ========= 4. BẢNG USER_STATUS =========
+-- Lưu trữ trạng thái online/offline và "last seen"
+CREATE TABLE user_status (
+    user_id BIGINT PRIMARY KEY,
+    is_online BOOLEAN NOT NULL DEFAULT false,
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+
+-- ========= 5. BẢNG SESSIONS =========
+-- Quản lý các phiên đăng nhập của người dùng trên các thiết bị
+CREATE TABLE sessions (
+    session_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id BIGINT NOT NULL,
+    device_info VARCHAR(255),
+    ip_address VARCHAR(45),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_active_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
